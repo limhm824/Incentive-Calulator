@@ -1,0 +1,333 @@
+
+<style>
+* { box-sizing: border-box; }
+.wrap { padding: 1rem 0; font-size: 14px; color: var(--color-text-primary); }
+.tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.tab-btn { padding: 8px 20px; font-size: 14px; font-weight: 500; background: transparent; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--color-text-secondary); margin-bottom: -0.5px; }
+.tab-btn.active { color: var(--color-text-primary); border-bottom: 2px solid var(--color-text-primary); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.sec-label { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 1.25rem 0 0.6rem; }
+.tbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.tbl th { font-size: 11px; color: var(--color-text-secondary); font-weight: 500; padding: 4px 6px; text-align: right; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.tbl th:first-child { text-align: left; }
+.tbl td { padding: 7px 6px; border-bottom: 0.5px solid var(--color-border-tertiary); vertical-align: middle; font-size: 13px; text-align: right; }
+.tbl td:first-child { text-align: left; }
+.sub-row td { background: var(--color-background-secondary); }
+.sub-row td:first-child { padding-left: 18px; }
+.sub-name { font-size: 12px; color: var(--color-text-secondary); }
+.group-row td { background: var(--color-background-primary); }
+.group-name { font-weight: 500; font-size: 13px; }
+.group-wt { font-size: 11px; color: var(--color-text-secondary); }
+.tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 20px; margin-left: 4px; }
+.tag-b { background: #E6F1FB; color: #0C447C; }
+.tag-p { background: #EEEDFE; color: #3C3489; }
+input[type=number] { width: 100%; font-size: 13px; }
+.ach-val { font-size: 13px; font-weight: 500; }
+.bar-wrap { background: var(--color-border-tertiary); border-radius: 4px; height: 4px; margin-top: 3px; overflow: hidden; }
+.bar-fill { height: 4px; border-radius: 4px; }
+.payout-val { font-size: 13px; font-weight: 500; }
+.payout-sub { font-size: 10px; color: var(--color-text-secondary); }
+.alert { border-radius: var(--border-radius-md); padding: 10px 14px; font-size: 13px; margin: 0.75rem 0; }
+.alert-ok { background: #EAF3DE; color: #27500A; }
+.alert-warn { background: #FAEEDA; color: #633806; }
+.alert-info { background: #E6F1FB; color: #0C447C; }
+.calc-btn { width: 100%; padding: 9px; font-size: 14px; font-weight: 500; margin-top: 1rem; cursor: pointer; border-radius: var(--border-radius-md); background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); color: var(--color-text-primary); }
+.calc-btn:hover { background: var(--color-background-secondary); }
+.tbl-total td { font-weight: 500; background: var(--color-background-secondary); border-top: 0.5px solid var(--color-border-secondary); border-bottom: none; }
+.combined-row td { font-size: 12px; color: var(--color-text-secondary); background: var(--color-background-secondary); border-bottom: 0.5px solid var(--color-border-secondary); }
+.combined-row td:first-child { padding-left: 18px; }
+.rollback-box { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 14px 16px; margin: 0.75rem 0; }
+.rb-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+.rb-row.total { font-weight: 500; border-top: 0.5px solid var(--color-border-tertiary); margin-top: 4px; padding-top: 8px; }
+.h1-note { font-size: 11px; color: var(--color-text-secondary); margin-top: 8px; }
+.locked { opacity: 0.45; }
+</style>
+
+<div class="wrap">
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('q1')">Q1</button>
+  <button class="tab-btn" onclick="switchTab('q2')">Q2</button>
+  <button class="tab-btn" onclick="switchTab('h1')">H1 summary</button>
+</div>
+<div id="tab-q1" class="tab-panel active"></div>
+<div id="tab-q2" class="tab-panel"></div>
+<div id="tab-h1" class="tab-panel"></div>
+</div>
+
+<script>
+const GROUPS = [
+  { id:'g1', name:'Cort / Firm / Pico', weight:0.20, tag:'20%', tc:'tag-b',
+    subs:[ {id:'cort',name:'Cort'}, {id:'firm',name:'Firm'}, {id:'pico',name:'Pico'} ] },
+  { id:'g2', name:'Gly / Min', weight:0.20, tag:'20%', tc:'tag-b',
+    subs:[ {id:'gly',name:'Gly'}, {id:'min',name:'Min'} ] },
+  { id:'g3', name:'Pentasa',  weight:0.30, tag:'30%', tc:'tag-p', subs:null },
+  { id:'g4', name:'Nocdurna', weight:0.30, tag:'30%', tc:'tag-p', subs:null },
+];
+const MAX_INCENTIVE = 6250;
+const THRESHOLD = 0.90;
+const state = { q1: null, q2: null };
+
+function prodPayoutPct(ach) {
+  if (ach < THRESHOLD) return 0;
+  const steps = Math.floor((ach - THRESHOLD) / 0.01);
+  return Math.min(0.50 + steps * 0.05, 1.00);
+}
+function rm(n) { return 'RM ' + n.toFixed(2); }
+function pct(n) { return (n * 100).toFixed(2) + '%'; }
+
+function getGroupVals(q, g) {
+  if (g.subs) {
+    let tgt = 0, act = 0;
+    g.subs.forEach(s => {
+      tgt += parseFloat(document.getElementById(`${q}_tgt_${g.id}_${s.id}`).value)||0;
+      act += parseFloat(document.getElementById(`${q}_act_${g.id}_${s.id}`).value)||0;
+    });
+    return { tgt, act };
+  } else {
+    return {
+      tgt: parseFloat(document.getElementById(`${q}_tgt_${g.id}`).value)||0,
+      act: parseFloat(document.getElementById(`${q}_act_${g.id}`).value)||0
+    };
+  }
+}
+
+function buildQuarterPanel(q) {
+  let rows = '';
+  GROUPS.forEach(g => {
+    const prodMax = MAX_INCENTIVE * g.weight;
+    if (g.subs) {
+      g.subs.forEach(s => {
+        rows += `<tr class="sub-row">
+          <td><div class="sub-name">${s.name}</div></td>
+          <td><input type="number" id="${q}_tgt_${g.id}_${s.id}" placeholder="0.00" min="0" step="0.01" oninput="liveUpdate('${q}')"></td>
+          <td><input type="number" id="${q}_act_${g.id}_${s.id}" placeholder="0.00" min="0" step="0.01" oninput="liveUpdate('${q}')"></td>
+          <td></td><td></td>
+        </tr>`;
+      });
+      rows += `<tr class="combined-row">
+        <td>
+          <strong style="font-style:normal;color:var(--color-text-primary);">${g.name}</strong>
+          <span class="tag ${g.tc}">${g.tag}</span> <span style="font-size:10px;">combined</span>
+          <br><span style="font-size:10px;">Max: ${rm(prodMax)}</span>
+        </td>
+        <td id="${q}_ctgt_${g.id}">—</td>
+        <td id="${q}_cact_${g.id}">—</td>
+        <td>
+          <div class="ach-val" id="${q}_ach_${g.id}" style="color:var(--color-text-secondary);">—</div>
+          <div class="bar-wrap"><div class="bar-fill" id="${q}_bar_${g.id}" style="width:0%;background:#B4B2A9;"></div></div>
+        </td>
+        <td id="${q}_paycell_${g.id}">
+          <div class="payout-val" id="${q}_pay_${g.id}">—</div>
+          <div class="payout-sub" id="${q}_paysub_${g.id}"></div>
+        </td>
+      </tr>`;
+    } else {
+      rows += `<tr class="group-row">
+        <td>
+          <div class="group-name">${g.name}<span class="tag ${g.tc}">${g.tag}</span></div>
+          <div class="group-wt">Max: ${rm(prodMax)}</div>
+        </td>
+        <td><input type="number" id="${q}_tgt_${g.id}" placeholder="0.00" min="0" step="0.01" oninput="liveUpdate('${q}')"></td>
+        <td><input type="number" id="${q}_act_${g.id}" placeholder="0.00" min="0" step="0.01" oninput="liveUpdate('${q}')"></td>
+        <td>
+          <div class="ach-val" id="${q}_ach_${g.id}" style="color:var(--color-text-secondary);">—</div>
+          <div class="bar-wrap"><div class="bar-fill" id="${q}_bar_${g.id}" style="width:0%;background:#B4B2A9;"></div></div>
+        </td>
+        <td id="${q}_paycell_${g.id}">
+          <div class="payout-val" id="${q}_pay_${g.id}">—</div>
+          <div class="payout-sub" id="${q}_paysub_${g.id}"></div>
+        </td>
+      </tr>`;
+    }
+  });
+
+  return `<div class="sec-label">Product targets &amp; actuals</div>
+  <table class="tbl">
+    <colgroup>
+      <col style="width:26%"><col style="width:16%"><col style="width:16%"><col style="width:18%"><col style="width:24%">
+    </colgroup>
+    <thead><tr>
+      <th>Product</th><th>Target (RM)</th><th>Actual (RM)</th><th>Achieve %</th><th>Payout (RM)</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr class="tbl-total">
+        <td>Overall weighted</td><td></td><td></td>
+        <td id="${q}_total_ach">—</td>
+        <td id="${q}_total_pay">—</td>
+      </tr>
+    </tfoot>
+  </table>
+  <button class="calc-btn" onclick="calcQuarter('${q}')">Calculate ${q.toUpperCase()} incentive</button>
+  <div id="${q}_alert" style="display:none;"></div>
+  <p class="h1-note" id="${q}_h1note" style="display:none;">Enter both Q1 and Q2, then check the H1 summary tab for rollback.</p>`;
+}
+
+function liveUpdate(q) {
+  let wtd = 0, allFilled = true;
+  GROUPS.forEach(g => {
+    const { tgt, act } = getGroupVals(q, g);
+    if (!tgt) allFilled = false;
+    const ach = tgt > 0 ? Math.min(act/tgt, 1) : 0;
+    wtd += ach * g.weight;
+    if (g.subs) {
+      const ct = document.getElementById(`${q}_ctgt_${g.id}`);
+      const ca = document.getElementById(`${q}_cact_${g.id}`);
+      if (ct) ct.textContent = tgt > 0 ? rm(tgt) : '—';
+      if (ca) ca.textContent = act > 0 ? rm(act) : '—';
+    }
+    const achEl = document.getElementById(`${q}_ach_${g.id}`);
+    const barEl = document.getElementById(`${q}_bar_${g.id}`);
+    if (tgt > 0) {
+      achEl.textContent = pct(ach);
+      achEl.style.color = ach >= 0.9 ? '#27500A' : '#633806';
+      barEl.style.width = Math.min(ach*100,100).toFixed(1)+'%';
+      barEl.style.background = ach >= 0.9 ? '#639922' : '#BA7517';
+    } else {
+      achEl.textContent = '—'; achEl.style.color = 'var(--color-text-secondary)';
+      barEl.style.width = '0%';
+    }
+    document.getElementById(`${q}_pay_${g.id}`).textContent = '—';
+    document.getElementById(`${q}_paysub_${g.id}`).textContent = '';
+  });
+  document.getElementById(`${q}_total_ach`).textContent = allFilled ? pct(wtd) : '—';
+  document.getElementById(`${q}_total_pay`).textContent = '—';
+}
+
+function calcQuarter(q) {
+  let wtd = 0;
+  const details = GROUPS.map(g => {
+    const { tgt, act } = getGroupVals(q, g);
+    if (!tgt) { alert('Please enter all target values.'); return null; }
+    const ach = tgt > 0 ? Math.min(act/tgt, 1) : 0;
+    wtd += ach * g.weight;
+    return {...g, tgt, act, ach};
+  });
+  if (details.includes(null)) return;
+
+  const eligible = wtd >= THRESHOLD;
+  let totalEarned = 0;
+
+  details.forEach(g => {
+    const prodMax = MAX_INCENTIVE * g.weight;
+    const payEl = document.getElementById(`${q}_pay_${g.id}`);
+    const subEl = document.getElementById(`${q}_paysub_${g.id}`);
+    const cellEl = document.getElementById(`${q}_paycell_${g.id}`);
+    if (!eligible) {
+      payEl.textContent = 'RM 0.00'; payEl.style.color = '#A32D2D';
+      subEl.textContent = 'Overall <90% — locked';
+      cellEl.classList.add('locked');
+    } else {
+      const pp = prodPayoutPct(g.ach);
+      const earned = pp * prodMax;
+      totalEarned += earned;
+      cellEl.classList.remove('locked');
+      if (pp > 0) {
+        payEl.textContent = rm(earned); payEl.style.color = 'var(--color-text-primary)';
+        subEl.textContent = pct(g.ach) + ' hit → ' + pct(pp) + ' of ' + rm(prodMax);
+      } else {
+        payEl.textContent = 'RM 0.00'; payEl.style.color = '#A32D2D';
+        subEl.textContent = 'Product <90% — no payout';
+      }
+    }
+  });
+
+  document.getElementById(`${q}_total_ach`).textContent = pct(wtd);
+  document.getElementById(`${q}_total_pay`).textContent = eligible ? rm(totalEarned) : 'RM 0.00';
+  state[q] = { wtd, eligible, earned: totalEarned, details };
+
+  const alertEl = document.getElementById(`${q}_alert`);
+  alertEl.style.display = 'block';
+  alertEl.innerHTML = !eligible
+    ? `<div class="alert alert-warn">Overall weighted achievement ${pct(wtd)} — below 90%. All product payouts are locked.</div>`
+    : `<div class="alert alert-ok">Overall ${pct(wtd)} — eligible! Each product pays out on its own achievement. Total: ${rm(totalEarned)}</div>`;
+  document.getElementById(`${q}_h1note`).style.display = 'block';
+}
+
+function buildH1Panel() {
+  return `<div id="h1-content"><div class="alert alert-info" style="margin-top:0.5rem;">Calculate both Q1 and Q2 first, then come back here.</div></div>
+  <button class="calc-btn" onclick="calcH1()">Calculate H1 rollback</button>`;
+}
+
+function calcH1() {
+  if (!state.q1 || !state.q2) { alert('Please calculate both Q1 and Q2 first.'); return; }
+  const q1 = state.q1, q2 = state.q2;
+  let h1Wtd = 0;
+  const h1Details = GROUPS.map((g, i) => {
+    const tgt = q1.details[i].tgt + q2.details[i].tgt;
+    const act = q1.details[i].act + q2.details[i].act;
+    const ach = tgt > 0 ? Math.min(act/tgt, 1) : 0;
+    h1Wtd += ach * g.weight;
+    return {...g, tgt, act, ach};
+  });
+
+  const h1Eligible = h1Wtd >= THRESHOLD;
+  let h1TotalEntitlement = 0;
+  let prodRows = '';
+
+  h1Details.forEach(g => {
+    const prodMax = MAX_INCENTIVE * 2 * g.weight;
+    const pp = h1Eligible ? prodPayoutPct(g.ach) : 0;
+    const prodEntitled = pp * prodMax;
+    h1TotalEntitlement += prodEntitled;
+    const bw = Math.min(g.ach*100,100).toFixed(1);
+    const bc = g.ach >= 0.9 ? '#639922' : '#BA7517';
+    const achColor = g.ach >= 0.9 ? '#27500A' : '#633806';
+    const payColor = pp > 0 ? 'var(--color-text-primary)' : '#A32D2D';
+    const paySub = !h1Eligible ? 'Overall <90% — locked' : pp > 0 ? pct(g.ach)+' hit → '+pct(pp)+' of '+rm(prodMax) : 'Product <90% — no payout';
+    const nameNote = g.subs ? ' <span style="font-size:10px;font-style:italic;">(combined)</span>' : '';
+    prodRows += `<tr>
+      <td><div class="group-name">${g.name}${nameNote}<span class="tag ${g.tc}">${g.tag}</span></div><div class="group-wt">H1 max: ${rm(prodMax)}</div></td>
+      <td>${rm(g.tgt)}</td><td>${rm(g.act)}</td>
+      <td>
+        <div class="ach-val" style="color:${achColor};">${pct(g.ach)}</div>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${bw}%;background:${bc};"></div></div>
+      </td>
+      <td>
+        <div class="payout-val" style="color:${payColor};">${h1Eligible && pp>0 ? rm(prodEntitled) : 'RM 0.00'}</div>
+        <div class="payout-sub">${paySub}</div>
+      </td>
+    </tr>`;
+  });
+
+  const alreadyPaid = q1.earned + q2.earned;
+  const cappedEntitlement = Math.min(h1TotalEntitlement, MAX_INCENTIVE * 2);
+  const rollback = Math.max(0, cappedEntitlement - alreadyPaid);
+  const netTotal = alreadyPaid + rollback;
+
+  const alertHtml = !h1Eligible
+    ? `<div class="alert alert-warn">H1 overall ${pct(h1Wtd)} — below 90%. No rollback payable.</div>`
+    : rollback > 0
+      ? `<div class="alert alert-ok">H1 eligible! Rollback of ${rm(rollback)} payable to recover Q1 shortfall.</div>`
+      : `<div class="alert alert-ok">H1 eligible. No additional rollback — quarterly payments already covered full entitlement.</div>`;
+
+  document.getElementById('h1-content').innerHTML = `
+    <div class="sec-label">H1 combined performance</div>
+    <table class="tbl">
+      <colgroup><col style="width:26%"><col style="width:16%"><col style="width:16%"><col style="width:18%"><col style="width:24%"></colgroup>
+      <thead><tr><th>Product</th><th>H1 target (RM)</th><th>H1 actual (RM)</th><th>Achieve %</th><th>H1 payout (RM)</th></tr></thead>
+      <tbody>${prodRows}</tbody>
+      <tfoot><tr class="tbl-total"><td>Overall weighted</td><td></td><td></td><td>${pct(h1Wtd)}</td><td>${rm(cappedEntitlement)}</td></tr></tfoot>
+    </table>
+    ${alertHtml}
+    <div class="sec-label">Rollback reconciliation</div>
+    <div class="rollback-box">
+      <div class="rb-row"><span>Q1 incentive paid</span><span>${rm(q1.earned)}</span></div>
+      <div class="rb-row"><span>Q2 incentive paid</span><span>${rm(q2.earned)}</span></div>
+      <div class="rb-row"><span>Total paid to date</span><span>${rm(alreadyPaid)}</span></div>
+      <div class="rb-row"><span>H1 total entitlement (capped 100%×2)</span><span>${rm(cappedEntitlement)}</span></div>
+      <div class="rb-row total"><span>Rollback payable now</span><span style="color:${rollback>0?'#27500A':'var(--color-text-primary)'};">${rm(rollback)}</span></div>
+      <div class="rb-row total"><span>Net total for H1</span><span>${rm(netTotal)}</span></div>
+    </div>`;
+}
+
+function switchTab(t) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['q1','q2','h1'][i]===t));
+  document.querySelectorAll('.tab-panel').forEach((p,i) => p.classList.toggle('active', ['q1','q2','h1'][i]===t));
+}
+
+document.getElementById('tab-q1').innerHTML = buildQuarterPanel('q1');
+document.getElementById('tab-q2').innerHTML = buildQuarterPanel('q2');
+document.getElementById('tab-h1').innerHTML = buildH1Panel();
+</script>
